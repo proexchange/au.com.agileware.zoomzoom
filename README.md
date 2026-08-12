@@ -92,6 +92,35 @@ If the user account you wish to host the Zoom meetings/webinars is *not* the Own
 
 ## Configuration Defaults
 
+## Recurring Zoom Meeting series
+
+Version 1.12 adds occurrence-aware recurring **Meetings**. Recurring Webinars continue to use the legacy behavior.
+
+- On a native CiviCRM repeating Event, enable **Sync this repeating Event to Zoom** on the Repeat tab. The **Synchronize recurring Zoom Meeting series** scheduled job creates one Zoom type-8 master and maps every Civi Event to a Zoom occurrence ID.
+- Zoom-created type-8 Meetings are imported as independent CiviCRM Events grouped by extension-owned mappings. The next 30 available future occurrences are maintained; past Events and attendance are retained.
+- The Repeat tab is editable only on a CiviCRM-owned parent Event. Imported Zoom occurrences are marked **Zoom-owned recurring Meeting**; their Repeat form is intentionally blocked, because recurrence changes must be made in Zoom.
+- The originating system owns the schedule. Civi-owned series push schedules to Zoom; Zoom-owned series overwrite local occurrence dates and cancellations. Local descriptions on Zoom-owned Events remain editable.
+- Daily, weekly, monthly day-of-month, and monthly nth-weekday fixed-time rules are supported. Unsupported or ambiguous rules enter a visible error state without partial local mappings.
+- Disable the Repeat-tab option to detach and retain the remote Zoom Meeting. **Delete Zoom Series** is a separate confirmation that queues remote deletion for the scheduled job.
+- Series membership and Zoom registration are managed from the Civi-owned parent/first Event. A contact is registered with Zoom once, while attendance remains specific to each occurrence.
+
+The importer intentionally does not repair older master-only recurring imports. The CiviCRM system-status check reports suspicious legacy records for manual review.
+
+## Delegated Zoom Hosts
+
+The extension provides a **Zoom Host** CiviCRM Participant Role. Assign this role to one or more Participants on an Event to allow those contacts to start its Zoom Meeting or Webinar without being licensed Zoom users. A Participant may have Zoom Host together with other Participant Roles.
+
+A delegated host must be logged in and have the CiviCRM **Access CiviEvent** permission. Users with **Edit all events** may start the Zoom without being a Participant host. In either case the Event must be active, have a Zoom session, and be inside the configured host-access window.
+
+Configure the window in **Administer → Zoom Settings**:
+
+- **Host Start Lead Time (minutes)** defaults to 30 minutes before the Event start.
+- **Default Host Access Duration (minutes)** defaults to 60 minutes after the Event start when the Event has no end time.
+
+Access closes at the Event end time, or at the default duration when there is no end time. The host launch retrieves a fresh Zoom `start_url` only after CiviCRM validates the user, Event, and window. It supports both Meetings and Webinars.
+
+Use `{zoom.host_start_link}` in Scheduled Reminders and message templates for delegated hosts. It links to CiviCRM's protected launch endpoint and does not expose Zoom's host URL. The existing `{zoom.start_url}` token is unchanged for backward compatibility, but it contains the raw Zoom host URL and is not recommended for delegated Event hosts.
+
 Zoom Zoom is provided with optional default configuration sets.
 
 - Default CiviRules rulesets

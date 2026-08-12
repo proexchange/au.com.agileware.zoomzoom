@@ -32,6 +32,7 @@ class CRM_Zoomzoom_Tokens {
 			self::registerCtx($entity, 'zoom_id', E::ts('Zoom ID'));
 			self::registerCtx($entity, 'password', E::ts('Zoom Password'));
 			self::registerCtx($entity, 'start_url', E::ts('Zoom Start URL'));
+			self::registerCtx($entity, 'host_start_link', E::ts('Zoom Host Start Link'));
 			self::registerCtx($entity, 'join_url', E::ts('Zoom Join URL'));
 			self::registerCtx($entity, 'registration_url', E::ts('Zoom Registration URL'));
 			self::registerCtx($entity, 'global_dial_in_numbers', E::ts('Zoom Dial-in Numbers'));
@@ -60,7 +61,7 @@ class CRM_Zoomzoom_Tokens {
 			if (!empty($row->context['eventId'])) {
 				$event = Event::get(FALSE)
 					->addWhere('id', '=', $row->context['eventId'])
-					->addSelect('zoom.zoom_id', 'zoom.password', 'zoom.start_url', 'zoom.join_url', 'zoom.registration_url', 'zoom.global_dial_in_numbers')
+					->addSelect('id', 'zoom.zoom_id', 'zoom.password', 'zoom.start_url', 'zoom.join_url', 'zoom.registration_url', 'zoom.global_dial_in_numbers')
 					->addWhere('zoom.zoom_id', 'IS NOT EMPTY')
 					->execute()
 					->first();
@@ -68,6 +69,7 @@ class CRM_Zoomzoom_Tokens {
 				$row->tokens(self::TOKEN, 'zoom_id', $event['zoom.zoom_id'] ?? '');
 				$row->tokens(self::TOKEN, 'password', $event['zoom.password'] ?? '' );
 				$row->tokens(self::TOKEN, 'start_url', $event['zoom.start_url'] ?? '' );
+				$row->tokens(self::TOKEN, 'host_start_link', !empty($event['id']) ? CRM_Zoomzoom_Host::getStartLink($event['id']) : '');
 				$row->tokens(self::TOKEN, 'join_url', $event['zoom.join_url'] ?? '' );
 				$row->tokens(self::TOKEN, 'registration_url', $event['zoom.registration_url'] ?? '' );
 				$row->tokens(self::TOKEN, 'global_dial_in_numbers', $event['zoom.global_dial_in_numbers'] ?? '');

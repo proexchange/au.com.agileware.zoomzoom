@@ -25,6 +25,8 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
    * so here to avoid order of operation problems.
    */
   public function postInstall() {
+    CRM_Zoomzoom_Series::ensureSchema();
+	CRM_Zoomzoom_Host::ensureZoomHostRole();
     CRM_Civirules_Utils_Upgrader::insertActionsFromJson(E::path('civirules.json'));
 	CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
   }
@@ -37,6 +39,8 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
   // }
 
   public function enable() {
+	CRM_Zoomzoom_Series::ensureSchema();
+	CRM_Zoomzoom_Host::ensureZoomHostRole();
     CRM_Civirules_Utils_Upgrader::insertActionsFromJson(E::path('civirules.json'));
 	  CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
   }
@@ -83,6 +87,33 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
     } catch (Exception $e) {
       // Do nothing - not critical
     }
+    return TRUE;
+  }
+
+  /**
+   * Add the delegated Event host participant role for existing installs.
+   */
+  public function upgrade_11000() {
+    $this->ctx->log->info('Ensuring Zoom Host participant role exists');
+    CRM_Zoomzoom_Host::ensureZoomHostRole();
+    return TRUE;
+  }
+
+  /**
+   * Add occurrence-aware recurring Meeting support.
+   */
+  public function upgrade_11200() {
+    $this->ctx->log->info('Creating ZoomZoom recurring series storage');
+    CRM_Zoomzoom_Series::ensureSchema();
+    return TRUE;
+  }
+
+  /**
+   * Correct grouping anchors for Zoom-owned imported occurrence Events.
+   */
+  public function upgrade_11300() {
+    $this->ctx->log->info('Normalizing Zoom-owned recurring series anchors');
+    CRM_Zoomzoom_Series::repairZoomOwnedAnchors();
     return TRUE;
   }
   

@@ -42,6 +42,12 @@ function civicrm_api3_zoomzoom_importzooms($params) {
 
     foreach ($zooms as $zoom) {
       try {
+        // Recurring Meetings are occurrence-aware and never use the
+        // unreliable master start_time. Recurring Webinars remain legacy.
+        if (substr($zoom['civicrm_zoom_id'], 0, 1) === 'm' && (int) ($zoom['type'] ?? 0) === 8) {
+          CRM_Zoomzoom_Series::importZoomSeries($zoom);
+          continue;
+        }
         // Get the Event Type settings for imported Zooms
         $event_type = Civi::settings()->get('zoom_import_meeting');
         if (substr($zoom['civicrm_zoom_id'], 0, 1) == 'w') {
@@ -172,6 +178,11 @@ function civicrm_api3_zoomzoom_importattendees($params) {
         ->execute();
 
       foreach ($events as $event) {
+        // Managed recurring series resolve registrants/attendance through the
+        // series job so a master ID cannot leak attendance across children.
+        if (CRM_Zoomzoom_Series::isManagedEvent($event['id'])) {
+          continue;
+        }
         $api = CRM_Zoomzoom_Zoom::getZoomAPIFromCiviCRMZoomId($event['zoom.zoom_id']);
         $zoom_id = CRM_Zoomzoom_Zoom::getZoomIDFromCiviCRMZoomId($event['zoom.zoom_id']);
 
@@ -252,5 +263,26 @@ function civicrm_api3_zoomzoom_importattendees($params) {
     CRM_Core_Error::debug_var('Zoomzoom::importattendees', $errorMessage);
     CRM_Core_Error::debug_var('Zoomzoom::importattendees', $params);
     return civicrm_api3_create_error($errorMessage);
+  }
+}
+
+/**
+ * zoomzoom.syncseries specification.
+ */
+function _civicrm_api3_zoomzoom_syncseries_spec(&$spec) {
+  // No parameters: all enabled series are reconciled by the managed job.
+}
+
+/**
+ * Reconcile all enabled recurring Meeting series.
+ */
+function civicrm_api3_zoomzoom_syncseries($params) {
+  try {
+    $stats = CRM_Zoomzoom_Series::syncAll();
+    return civicrm_api3_create_success($stats, $params, 'Zoomzoom', 'syncseries');
+  }
+  catch (Throwable $e) {
+    CRM_Core_Error::debug_log_message('ZoomZoom recurring series job failed before reconciliation completed.');
+    return civicrm_api3_create_error($e->getMessage());
   }
 }

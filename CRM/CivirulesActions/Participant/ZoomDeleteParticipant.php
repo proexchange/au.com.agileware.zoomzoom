@@ -13,6 +13,11 @@ class CRM_CivirulesActions_Participant_ZoomDeleteParticipant extends CRM_Civirul
   public function processAction(CRM_Civirules_TriggerData_TriggerData $triggerData) {
     $event = $triggerData->getEntityData('Event');
 
+    $series = CRM_Zoomzoom_Series::getByEventId($event['id']);
+    if ($series) {
+      return;
+    }
+
     $civicrm_zoom_id = CRM_Zoomzoom_Zoom::getEventZoomMeetingId($event['id']);
 
     // Check if this Event has a Zoom ID set

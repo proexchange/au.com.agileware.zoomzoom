@@ -7,6 +7,18 @@
     <access_arguments>administer CiviCRM</access_arguments>
   </item>
   <item>
+    <path>civicrm/zoomzoom/start</path>
+    <page_callback>CRM_Zoomzoom_Page_Start</page_callback>
+    <title>Start Zoom Session</title>
+    <access_arguments>access CiviEvent;edit all events</access_arguments>
+  </item>
+  <item>
+    <path>civicrm/event/zoomzoom/delete-series</path>
+    <page_callback>CRM_Zoomzoom_Form_DeleteSeries</page_callback>
+    <title>Delete Zoom Meeting Series</title>
+    <access_arguments>edit all events;administer CiviCRM</access_arguments>
+  </item>
+  <item>
     <path>civicrm/civirule/form/action/zoom/createwebinarfromevent</path>
     <page_callback>CRM_CivirulesActions_Zoom_Form_CreateWebinarFromEvent</page_callback>
     <title>Create Zoom Webinar</title>

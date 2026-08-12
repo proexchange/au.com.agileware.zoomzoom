@@ -21,6 +21,10 @@ class CRM_CivirulesActions_Event_ZoomCreateWebinarFromEvent extends CRM_Civirule
   public function processAction(CRM_Civirules_TriggerData_TriggerData $triggerData) {
     $event = $triggerData->getEntityData('Event');
 
+    if (CRM_Zoomzoom_Series::isManagedEvent($event['id'])) {
+      return;
+    }
+
     // Skip if this is a template
     if ( $event['is_template'] ) {
       return;

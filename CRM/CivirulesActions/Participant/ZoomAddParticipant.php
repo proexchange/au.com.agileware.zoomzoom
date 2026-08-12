@@ -15,6 +15,13 @@ class CRM_CivirulesActions_Participant_ZoomAddParticipant extends CRM_Civirules_
     $event = $triggerData->getEntityData('Event');
     $participant_id = $triggerData->getEntityData('Participant')['participant_id'];
 
+    $series = CRM_Zoomzoom_Series::getByEventId($event['id']);
+    if ($series) {
+      // Managed recurring registration is reconciled once from the parent by
+      // the scheduled series job, never by an occurrence-triggered CiviRule.
+      return;
+    }
+
     $civicrm_zoom_id = CRM_Zoomzoom_Zoom::getEventZoomMeetingId($event['id']);
 
     // Check if this Event has a Zoom ID set

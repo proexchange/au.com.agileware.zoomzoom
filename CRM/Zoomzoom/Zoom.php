@@ -122,7 +122,7 @@ class CRM_Zoomzoom_Zoom {
     return $zooms;
   }
 
-  static function getZoomsByUser($api, $day_offset = 0, $user) {
+  static function getZoomsByUser($api, $day_offset = 0, $user = NULL) {
     $date_offset = strtotime($day_offset . ' days');
     $zoom_api = self::getZoomObject();
     $zooms = [];
@@ -151,7 +151,9 @@ class CRM_Zoomzoom_Zoom {
             $zooms_list[$api][$key]['civicrm_zoom_id'] = substr($api, 0, 1) . $zoom_instance['id'];
 
             // If Zoom start time prior to the date offset then remove it
-            if (strtotime($zoom_instance['start_time']) < $date_offset) {
+            // Type-8 meeting masters can expose a meaningless top-level
+            // start_time. Their occurrence list is authoritative.
+            if ((int) ($zoom_instance['type'] ?? 0) !== 8 && strtotime($zoom_instance['start_time']) < $date_offset) {
               unset($zooms_list[$api][$key]);
             }
           }
@@ -213,6 +215,72 @@ class CRM_Zoomzoom_Zoom {
     }
 
     return FALSE;
+  }
+
+  /**
+   * Create a type-8 recurring meeting and return the complete response.
+   */
+  public static function createRecurringMeeting(array $params) {
+    $params['type'] = 8;
+    $owner = self::getOwner();
+    $zoom = self::getZoomObject();
+    if (empty($owner['id']) || empty($zoom)) {
+      return FALSE;
+    }
+    try {
+      $response = $zoom->doRequest('POST', '/users/{userId}/meetings', [], ['userId' => $owner['id']], json_encode($params, JSON_NUMERIC_CHECK));
+      return !empty($response['id']) && (int) $zoom->responseCode() < 400 ? $response : FALSE;
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to create recurring Zoom meeting.');
+      return FALSE;
+    }
+  }
+
+  /**
+   * Update a recurring meeting master.
+   */
+  public static function updateRecurringMeeting($zoomId, array $params) {
+    return self::meetingWrite('PATCH', $zoomId, $params);
+  }
+
+  /**
+   * Update one future occurrence without changing the master recurrence.
+   */
+  public static function updateMeetingOccurrence($zoomId, $occurrenceId, array $params) {
+    return self::meetingWrite('PATCH', $zoomId, $params, $occurrenceId);
+  }
+
+  /**
+   * Cancel one future occurrence without deleting the recurring master.
+   */
+  public static function deleteMeetingOccurrence($zoomId, $occurrenceId) {
+    return self::meetingWrite('DELETE', $zoomId, [], $occurrenceId);
+  }
+
+  private static function meetingWrite($method, $zoomId, array $params = [], $occurrenceId = NULL) {
+    if (!preg_match('/^\d+$/', (string) $zoomId) || ($occurrenceId !== NULL && !preg_match('/^[A-Za-z0-9_-]+$/', (string) $occurrenceId))) {
+      return FALSE;
+    }
+    $zoom = self::getZoomObject();
+    if (empty($zoom)) {
+      return FALSE;
+    }
+    $query = $occurrenceId === NULL ? [] : ['occurrence_id' => (string) $occurrenceId];
+    $body = $params ? json_encode($params, JSON_NUMERIC_CHECK) : '';
+    try {
+      $zoom->doRequest($method, '/meetings/{zoomId}', $query, ['zoomId' => $zoomId], $body);
+      return in_array((int) $zoom->responseCode(), [200, 201, 204], TRUE);
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to modify recurring Zoom meeting occurrence.');
+      return FALSE;
+    }
+  }
+
+  public static function getLastResponseCode() {
+    $zoom = self::getZoomObject();
+    return $zoom ? (int) $zoom->responseCode() : 0;
   }
 
   /**
@@ -405,7 +473,7 @@ class CRM_Zoomzoom_Zoom {
 
       if (in_array($updateEmail, $currentEmails)) {
         // Check join URL
-        if ($current['zoom_registrant.join_url'] != $to_update['zoom_join_url']) {
+        if (($current['zoom_registrant.join_url'] ?? '') != ($to_update['zoom_join_url'] ?? '')) {
           return TRUE;
         }
 
@@ -489,8 +557,8 @@ class CRM_Zoomzoom_Zoom {
           ->addValue('event_id', $registration_details['event']['id'])
           ->addValue('status_id', $registration_details['status_id'])
           ->addValue('register_date', $register_date)
-          ->addValue('zoom_registrant.registrant_id', $registration_details['zoom_id'])
-          ->addValue('zoom_registrant.join_url', $registration_details['zoom_join_url'])
+          ->addValue('zoom_registrant.registrant_id', $registration_details['zoom_id'] ?? '')
+          ->addValue('zoom_registrant.join_url', $registration_details['zoom_join_url'] ?? '')
           ->execute();
 
         return TRUE;
@@ -498,7 +566,7 @@ class CRM_Zoomzoom_Zoom {
     } catch (CRM_Core_Exception $e) {
       $errorMessage = $e->getMessage();
       CRM_Core_Error::debug_var('Zoomzoom::updateCiviCRMParticipant', $errorMessage);
-      CRM_Core_Error::debug_var('Zoomzoom::updateCiviCRMParticipant', $registration_details);
+      CRM_Core_Error::debug_log_message('ZoomZoom participant update failed for Event ' . (int) ($registration_details['event']['id'] ?? 0) . '.');
       return FALSE;
     }
   }
@@ -524,6 +592,160 @@ class CRM_Zoomzoom_Zoom {
       CRM_Core_Error::debug_var('Zoomzoom::getEventZoomMeetingId', $errorMessage);
       CRM_Core_Error::debug_var('Zoomzoom::getEventZoomMeetingId', $eventId);
       return NULL;
+    }
+  }
+
+  /**
+   * Retrieve current details for a Zoom meeting.
+   *
+   * @param string $zoomId
+   * @return array|false
+   */
+  public static function getMeeting($zoomId) {
+    return self::getZoomDetails('meetings', $zoomId);
+  }
+
+  /**
+   * Retrieve a recurring meeting and its occurrence list.
+   */
+  public static function getMeetingOccurrences($zoomId, $includePrevious = FALSE) {
+    if (!preg_match('/^\d+$/', (string) $zoomId)) {
+      return FALSE;
+    }
+    $zoom = self::getZoomObject();
+    if (empty($zoom)) {
+      return FALSE;
+    }
+    try {
+      $response = $zoom->doRequest('GET', '/meetings/{zoomId}', [
+        'show_previous_occurrences' => $includePrevious ? 'true' : 'false',
+      ], ['zoomId' => $zoomId]);
+      return is_array($response) && (int) $zoom->responseCode() < 400 ? $response : FALSE;
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve recurring Zoom meeting occurrences.');
+      return FALSE;
+    }
+  }
+
+  /**
+   * List completed instances for a recurring meeting master.
+   */
+  public static function getPastMeetingInstances($zoomId) {
+    if (!preg_match('/^\d+$/', (string) $zoomId)) {
+      return [];
+    }
+    $zoom = self::getZoomObject();
+    if (empty($zoom)) {
+      return [];
+    }
+    try {
+      $response = $zoom->doRequest('GET', '/past_meetings/{zoomId}/instances', [], ['zoomId' => $zoomId]);
+      return $response['meetings'] ?? [];
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve recurring Zoom meeting instances.');
+      return [];
+    }
+  }
+
+  /**
+   * Retrieve participants for one completed meeting UUID.
+   */
+  public static function getPastMeetingParticipantsByUuid($uuid) {
+    if (!is_string($uuid) || $uuid === '') {
+      return [];
+    }
+    // Zoom requires UUIDs beginning with '/' or containing '//' to be encoded
+    // twice. The wrapper URL-encodes path parameters once; pre-encode only when the
+    // Zoom endpoint requires the UUID to be encoded twice.
+    $pathUuid = preg_match('#^/|//#', $uuid) ? rawurlencode($uuid) : $uuid;
+    $zoom = self::getZoomObject();
+    if (empty($zoom)) {
+      return [];
+    }
+    $participants = [];
+    $params = ['page_size' => 300];
+    try {
+      do {
+        $response = $zoom->doRequest('GET', '/past_meetings/{uuid}/participants', $params, ['uuid' => $pathUuid]);
+        foreach ($response['participants'] ?? [] as $participant) {
+          $participants[] = $participant;
+        }
+        $params['next_page_token'] = $response['next_page_token'] ?? NULL;
+      } while (!empty($params['next_page_token']));
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve participants for a recurring Zoom meeting instance.');
+    }
+    return $participants;
+  }
+
+  /**
+   * Retrieve current details for a Zoom webinar.
+   *
+   * @param string $zoomId
+   * @return array|false
+   */
+  public static function getWebinar($zoomId) {
+    return self::getZoomDetails('webinars', $zoomId);
+  }
+
+  /**
+   * Retrieve a fresh host start URL for a CiviCRM Zoom ID.
+   *
+   * @param string $civicrmZoomId An ID in the form m123 or w123.
+   * @return string|false
+   */
+  public static function getStartUrl($civicrmZoomId) {
+    if (!is_string($civicrmZoomId) || !preg_match('/^([mw])(\\d+)$/i', $civicrmZoomId, $matches)) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve Zoom start URL: invalid CiviCRM Zoom ID.');
+      return FALSE;
+    }
+
+    $details = strtolower($matches[1]) === 'm'
+      ? self::getMeeting($matches[2])
+      : self::getWebinar($matches[2]);
+
+    if (empty($details['start_url'])) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve Zoom start URL from Zoom API.');
+      return FALSE;
+    }
+
+    return $details['start_url'];
+  }
+
+  /**
+   * Make a safe Zoom detail request without exposing API failures to callers.
+   *
+   * @param string $api
+   * @param string $zoomId
+   * @return array|false
+   */
+  protected static function getZoomDetails($api, $zoomId) {
+    if (!preg_match('/^\\d+$/', (string) $zoomId)) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve Zoom ' . $api . ': invalid Zoom ID.');
+      return FALSE;
+    }
+
+    $zoom = self::getZoomObject();
+    if (empty($zoom)) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve Zoom ' . $api . ': Zoom OAuth is not configured.');
+      return FALSE;
+    }
+
+    try {
+      // Scopes: meeting:read:meeting:admin, webinar:read:webinar:admin.
+      $response = $zoom->doRequest('GET', '/' . $api . '/{zoomId}', [], ['zoomId' => $zoomId]);
+      if (empty($response) || !is_array($response) || ($zoom->responseCode() && (int) $zoom->responseCode() >= 400)) {
+        CRM_Core_Error::debug_log_message('Unable to retrieve Zoom ' . $api . ' from Zoom API (HTTP ' . $zoom->responseCode() . ').');
+        return FALSE;
+      }
+      return $response;
+    }
+    catch (Exception $e) {
+      CRM_Core_Error::debug_log_message('Unable to retrieve Zoom ' . $api . ' from Zoom API.');
+      return FALSE;
     }
   }
 
@@ -701,4 +923,3 @@ class CRM_Zoomzoom_Zoom {
   }
 
 }
-

@@ -14,6 +14,10 @@ class CRM_CivirulesActions_Event_ZoomUpdateFromEvent extends CRM_Civirules_Actio
   public function processAction(CRM_Civirules_TriggerData_TriggerData $triggerData) {
     $event = $triggerData->getEntityData('Event');
 
+    if (CRM_Zoomzoom_Series::isManagedEvent($event['id'])) {
+      return;
+    }
+
     $civicrm_zoom_id = CRM_Zoomzoom_Zoom::getEventZoomMeetingId($event['id']);
 
     // Check if this Event has a Zoom ID set
