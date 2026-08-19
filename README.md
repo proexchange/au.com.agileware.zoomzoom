@@ -119,7 +119,7 @@ Configure the window in **Administer → Zoom Settings**:
 
 Access closes at the Event end time, or at the default duration when there is no end time. The host launch retrieves a fresh Zoom `start_url` only after CiviCRM validates the user, Event, and window. It supports both Meetings and Webinars.
 
-Use `{zoom.host_start_link}` in Scheduled Reminders and message templates for delegated hosts. It links to CiviCRM's protected launch endpoint and does not expose Zoom's host URL. The existing `{zoom.start_url}` token is unchanged for backward compatibility, but it contains the raw Zoom host URL and is not recommended for delegated Event hosts.
+Use `{zoom.host_start_link}` in Scheduled Reminders and message templates for delegated hosts. It links to CiviCRM's protected launch endpoint and does not expose Zoom's host URL. You can also link directly to the same protected endpoint for a specific Event: `/civicrm/zoomzoom/start?event_id=EVENT_ID` (for example, `/civicrm/zoomzoom/start?event_id=174`). The existing `{zoom.start_url}` token is unchanged for backward compatibility, but it contains the raw Zoom host URL and is not recommended for delegated Event hosts.
 
 Zoom Zoom is provided with optional default configuration sets.
 
