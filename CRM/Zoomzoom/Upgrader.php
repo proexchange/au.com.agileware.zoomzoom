@@ -26,9 +26,8 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
    */
   public function postInstall() {
     CRM_Zoomzoom_Series::ensureSchema();
-	CRM_Zoomzoom_Host::ensureZoomHostRole();
     CRM_Civirules_Utils_Upgrader::insertActionsFromJson(E::path('civirules.json'));
-	CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
+    CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
   }
 
   /**
@@ -39,10 +38,9 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
   // }
 
   public function enable() {
-	CRM_Zoomzoom_Series::ensureSchema();
-	CRM_Zoomzoom_Host::ensureZoomHostRole();
+    CRM_Zoomzoom_Series::ensureSchema();
     CRM_Civirules_Utils_Upgrader::insertActionsFromJson(E::path('civirules.json'));
-	  CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
+	CRM_Civirules_Utils_Upgrader::insertConditionsFromJson(E::path('civirulesconditions.json'));
   }
 
   /**
@@ -91,11 +89,11 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
   }
 
   /**
-   * Add the delegated Event host participant role for existing installs.
+   * The delegated Event host role is now managed by CiviCRM. Retain this
+   * historical upgrade number without creating a second role on old sites.
    */
   public function upgrade_11000() {
-    $this->ctx->log->info('Ensuring Zoom Host participant role exists');
-    CRM_Zoomzoom_Host::ensureZoomHostRole();
+    $this->ctx->log->info('Zoom Host participant role is managed by the extension');
     return TRUE;
   }
 
@@ -114,6 +112,12 @@ class CRM_Zoomzoom_Upgrader extends CRM_Extension_Upgrader_Base {
   public function upgrade_11300() {
     $this->ctx->log->info('Normalizing Zoom-owned recurring series anchors');
     CRM_Zoomzoom_Series::repairZoomOwnedAnchors();
+    return TRUE;
+  }
+
+  /** Report pre-existing duplicate Zoom Host roles for administrator review. */
+  public function upgrade_11400() {
+    CRM_Zoomzoom_Host::reportDuplicateZoomHostRoles();
     return TRUE;
   }
   

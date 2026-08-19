@@ -6,6 +6,8 @@
 class CRM_Zoomzoom_Host {
 
   const ROLE_NAME = 'Zoom Host';
+  const MANAGED_ROLE_NAME = 'ZoomZoom_ParticipantRole_ZoomHost';
+  const EXTENSION_KEY = 'au.com.agileware.zoomzoom';
 
   /**
    * Return the event in the shape needed by host access, or NULL when missing.
@@ -186,33 +188,29 @@ class CRM_Zoomzoom_Host {
   }
 
   /**
-   * Ensure the role exists. Used on install/upgrade and safely repeatable.
-   *
-   * @return void
-   */
-  public static function ensureZoomHostRole() {
-    $role = CRM_Core_BAO_OptionValue::ensureOptionValueExists([
-      'option_group_id' => 'participant_role',
-      'label' => self::ROLE_NAME,
-      'name' => self::ROLE_NAME,
-      'is_active' => 1,
-    ]);
-    // The ensure helper deliberately leaves existing records untouched. This
-    // extension-managed role must remain active, without creating a duplicate.
-    if (!empty($role['id'])) {
-      civicrm_api3('OptionValue', 'create', [
-        'id' => $role['id'],
-        'label' => self::ROLE_NAME,
-        'is_active' => 1,
-      ]);
-    }
-  }
-
-  /**
    * @return int|null
    */
   protected static function getZoomHostRoleId() {
     try {
+      // The managed entity is the canonical role. Looking it up first keeps
+      // host authorization deterministic on sites with a legacy duplicate.
+      $managedRoleId = CRM_Core_DAO::singleValueQuery(
+        'SELECT entity_id FROM civicrm_managed WHERE module = %1 AND name = %2 AND entity_type = %3 LIMIT 1',
+        [
+          1 => [self::EXTENSION_KEY, 'String'],
+          2 => [self::MANAGED_ROLE_NAME, 'String'],
+          3 => ['OptionValue', 'String'],
+        ]
+      );
+      if ($managedRoleId) {
+        $roleValue = civicrm_api3('OptionValue', 'getvalue', [
+          'id' => (int) $managedRoleId,
+          'return' => 'value',
+        ]);
+        if ($roleValue !== NULL) {
+          return (int) $roleValue;
+        }
+      }
       return civicrm_api3('OptionValue', 'getvalue', [
         'option_group_id' => 'participant_role',
         'name' => self::ROLE_NAME,
@@ -221,6 +219,32 @@ class CRM_Zoomzoom_Host {
     }
     catch (CRM_Core_Exception $e) {
       return NULL;
+    }
+  }
+
+  /**
+   * Report, but never automatically remove, legacy duplicate role records.
+   */
+  public static function reportDuplicateZoomHostRoles(): void {
+    try {
+      $roles = civicrm_api3('OptionValue', 'get', [
+        'option_group_id' => 'participant_role',
+        'name' => self::ROLE_NAME,
+        'return' => ['id', 'value'],
+        'options' => ['limit' => 0],
+      ]);
+      if ((int) ($roles['count'] ?? 0) > 1) {
+        $details = [];
+        foreach ($roles['values'] as $role) {
+          $details[] = sprintf('ID %d (value %s)', (int) $role['id'], (string) $role['value']);
+        }
+        Civi::log()->warning('Multiple Zoom Host participant roles were found: {roles}. Keep the managed role and merge or remove duplicates after reviewing participant usage.', [
+          'roles' => implode(', ', $details),
+        ]);
+      }
+    }
+    catch (CRM_Core_Exception $e) {
+      // A diagnostic must never interrupt extension installation or upgrade.
     }
   }
 
